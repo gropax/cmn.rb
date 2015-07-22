@@ -1,19 +1,32 @@
 #!/usr/bin/env ruby
 
+libdir = File.expand_path('../lib', File.dirname(__FILE__))
+$LOAD_PATH.unshift(libdir) unless $LOAD_PATH.include?(libdir)
+
 require 'rubygems'
 require 'commander/import'
+require 'pry'
+require 'cmn'
 
 program :version, '0.0.1'
 program :description, 'Aggregate chinese lexical data scrapped from the Internet.'
 
 command :scrap do |c|
   c.syntax = 'cmn scrap [options]'
-  c.summary = ''
-  c.description = ''
-  c.example 'description', 'command example'
-  c.option '--some-switch', 'Some switch that does something'
+  c.option '-V', '--verb', 'Treat input as a verbal lexical entry'
+  c.option '-A', '--adjective', 'Treat input as an adjectival lexical entry'
+  c.option '-N', '--noun', 'Treat input as a nominal lexical entry'
   c.action do |args, options|
-    # Do something or c.when_called Cmn::Commands::Scrap
+    case
+    when options.verb
+      Cmn::Commands::ScrapVerb.new(args, options).execute
+    when options.adjective
+      Cmn::Commands::ScrapAdjective.new(args, options).execute
+    when options.noun
+      Cmn::Commands::ScrapNoun.new(args, options).execute
+    else
+      raise
+    end
   end
 end
 
