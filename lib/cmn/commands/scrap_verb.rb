@@ -6,8 +6,10 @@ module Cmn
 
         case @word
         when /^.{1}$/
-          thrs << Thread.new { find_verbal_measure_words }
-          thrs << Thread.new { find_governmental_words }
+          #thrs << Thread.new { find_verbal_measure_words }
+          #thrs << Thread.new { find_governmental_words }
+          thrs << Thread.new { find_complemental_forms_as_verb }
+          thrs << Thread.new { find_complemental_forms_as_complement }
         when /^.{2}$/
           # @fixme
           #find_complemental_infix
@@ -18,11 +20,13 @@ module Cmn
           raise "Unhandled case !!"
         end
 
-        thrs << Thread.new { find_gei_structures }
-        thrs << Thread.new { find_ba_gei_structures }
-        thrs << Thread.new { find_ba_structures }
-        thrs << Thread.new { find_goal_prepositional_structures }
-        thrs << Thread.new { find_locative_prepositional_structures }
+        #thrs << Thread.new { find_gei_structures }
+        #thrs << Thread.new { find_ba_gei_structures }
+        #thrs << Thread.new { find_ba_structures }
+        #thrs << Thread.new { find_goal_prepositional_structures }
+        #thrs << Thread.new { find_locative_prepositional_structures }
+        #thrs << Thread.new { find_yu2_structure }
+        #thrs << Thread.new { find_wei2_structure }
 
         thrs.each { |thr| thr.join }
       end
@@ -52,6 +56,42 @@ module Cmn
       #     1. 看见 看-得-见 看-不-见
       #     2. 记得 记-不得 记-不清
       #     3. 靠得住 靠不住 (靠住 doesn't exist)
+
+      def find_complemental_forms_as_verb
+        results = find_complemental_forms(as: :verb)
+        puts " Complemental forms as verb ".center(60, '=')
+        puts table(results)
+      end
+
+      def find_complemental_forms_as_complement
+        results = find_complemental_forms(as: :complement)
+        puts " Complemental forms as complement ".center(60, '=')
+        puts table(results)
+      end
+
+      def find_complemental_forms(opts = {})
+        query = opts[:as] == :verb ? @word + '*' : '*' + @word
+        results = Crawlers::MDBGCrawler.new(search: query).crawl
+
+        results.each_with_object({}) do |w, obj|
+          if w =~ /^(.)(得|不)(.[^儿]?)$/
+            dis = $1 + $3
+            obj[dis] ||= []
+            pos = $2 == "得" ? 1 : 2
+            obj[dis][pos] = w
+            results.include?(dis) && obj[dis][0] = dis
+          end
+        end.values
+      end
+
+      def table(data)
+        data.map { |row|
+          row.map { |cell|
+            l = cell.to_s.length
+            cell.to_s.ljust(10-l)
+          }.join
+        }.join("\n")
+      end
 
       # Can check in a dictionary first to speed up the research.
       #
@@ -106,7 +146,7 @@ module Cmn
       end
 
       def find_ba_gei_structures
-        query = "把 [pos='n'] 给 [pos='n'] #{@word}"
+        query = "把 [pos='n'] 给 [pos='n'] [word='#{@word}'&pos='v']"
         regular = query_leeds_corpus(query, output: 100) do |context|
           m = context.match
           if m.first.text == "把" && m[2].text == "给" && m.last.text == @word
@@ -114,7 +154,7 @@ module Cmn
           end
         end
 
-        query = "把 [pos='n'] #{@word} 给"
+        query = "把 [pos='n'] [word='#{@word}'&pos='v'] 给"
         reversed = query_leeds_corpus(query, output: 100) do |context|
           m = context.match
           if m.first.text == "把" && m.last(2).map(&:text) == [@word, "给"]
@@ -126,7 +166,7 @@ module Cmn
       end
 
       def find_ba_structures
-        query = "把 [pos='n'] #{@word} ."
+        query = "把 [pos='n'] [word='#{@word}'&pos='v'] ."
         results = query_leeds_corpus(query, output: 100) do |context|
           m = context.match
           if m.first.text == "把" && m.last.text == @word &&
@@ -139,7 +179,7 @@ module Cmn
       end
 
       def find_goal_prepositional_structures
-        query = "对|同|和|跟|向|与 [pos='n'] #{@word}"
+        query = "对|同|和|跟|向|与 [pos='n'] [word='#{@word}'&pos='v']"
         results = query_leeds_corpus(query, output: 100) do |context|
           m = context.match
           if ["对", "同", "和", "跟", "向", "与"].include?(m.first.text) && m.last.text == @word
@@ -150,12 +190,31 @@ module Cmn
       end
 
       def find_locative_prepositional_structures
-        query = "在|到 [pos='n'] #{@word}"
+        query = "在|到 [pos='n'] [word='#{@word}'&pos='v']"
         results = query_leeds_corpus(query, output: 100) do |context|
           match_reversible_structure(context, "在", "到")
         end
         #filtered = results.select { |(_, count)| count > 10 }
         report_words_with_frequency("Locative Structures", results)
+      end
+
+      def find_yu2_structure
+        query = "[word='#{@word}'&pos='v'] 于 [pos='n']"
+        results = query_leeds_corpus(query, output: 100) do |context|
+          "#{@word}于..."
+        end
+        report_words_with_frequency("于 Structure", results)
+      end
+
+      def find_wei2_structure
+        query = "[word='#{@word}'&pos='v'] [pos='n'] 为 [pos='v']"
+        results = query_leeds_corpus(query, output: 100) do |context|
+          m = context.match
+          if m.first.text == @word && m[2].text == "为"
+            "#{@word}...为..."
+          end
+        end
+        report_words_with_frequency("为 Structure", results)
       end
 
       def match_reversible_structure(context, *preps)
